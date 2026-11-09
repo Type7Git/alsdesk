@@ -1,0 +1,62 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Prepare signing key (if configured)
+        id: sign
+        env:
+          KEYSTORE_B64: ${{ secrets.SYNC_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/sync.jks"
+            echo "path=$RUNNER_TEMP/sync.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        env:
+          SYNC_KEYSTORE_PATH: ${{ steps.sign.outputs.path != '' && steps.sign.outputs.path || '' }}
+          SYNC_KEYSTORE_PASSWORD: ${{ secrets.SYNC_KEYSTORE_PASSWORD }}
+          SYNC_KEY_ALIAS: ${{ secrets.SYNC_KEY_ALIAS }}
+          SYNC_KEY_PASSWORD: ${{ secrets.SYNC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$SYNC_KEYSTORE_PATH" ]; then unset SYNC_KEYSTORE_PATH; gradle --no-daemon :app:assembleDebug; cp app/build/outputs/apk/debug/app-debug.apk als-desk-sync.apk
+          else gradle --no-daemon :app:assembleRelease; cp app/build/outputs/apk/release/app-release.apk als-desk-sync.apk; fi
+          rm -f "$RUNNER_TEMP/sync.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: als-desk-sync-apk
+          path: als-desk-sync.apk
+
+      - name: Publish to the "latest" release (private repo)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest als-desk-sync.apk --title "Al's Desk Sync · build ${{ github.run_number }}" \
+            --notes "Install on your Android phone. Commit ${{ github.sha }}."
