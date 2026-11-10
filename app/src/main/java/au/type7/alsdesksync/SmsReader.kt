@@ -18,12 +18,20 @@ object SmsReader {
     fun hasPermission(ctx: Context) =
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
 
+    /** Australian-default E.164, matching the desk's normaliser. Service/short numbers are left as they are. */
     fun normalise(address: String): String {
-        val digits = address.filter { it.isDigit() || it == '+' }
+        var d = address.filter { it.isDigit() || it == '+' }
+        if (d.isEmpty()) return address.trim()
+        if (d.startsWith("0011")) d = "+" + d.drop(4)
+        else if (d.startsWith("00")) d = "+" + d.drop(2)
+        if (d.startsWith("+610")) d = "+61" + d.drop(4)
+        val digits = d.removePrefix("+")
         return when {
-            digits.startsWith("+") -> digits
-            digits.startsWith("04") && digits.length == 10 -> "+61" + digits.drop(1) // AU mobiles
-            else -> digits.ifEmpty { address.trim() }
+            d.startsWith("+") -> d
+            digits.startsWith("61") && digits.length == 11 -> "+$digits"
+            digits.startsWith("0") && digits.length == 10 -> "+61" + digits.drop(1) // 04 mobiles, 02/03/07/08 landlines
+            digits.startsWith("4") && digits.length == 9 -> "+61$digits"
+            else -> digits // 13xx, 1300, 1800, 19xx and other short numbers
         }
     }
 
