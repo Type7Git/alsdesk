@@ -47,6 +47,11 @@ jobs:
           else gradle --no-daemon :app:assembleRelease; cp app/build/outputs/apk/release/app-release.apk als-desk-sync.apk; fi
           rm -f "$RUNNER_TEMP/sync.jks"
 
+      - name: Show signing certificate (public fingerprint only)
+        run: |
+          AS=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$AS" verify --print-certs als-desk-sync.apk | grep -E "SHA-256|DN"
+
       - uses: actions/upload-artifact@v4
         with:
           name: als-desk-sync-apk
