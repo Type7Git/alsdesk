@@ -92,6 +92,24 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // 2b. WhatsApp replies (optional)
+        heading("Your WhatsApp replies (optional)")
+        note("WhatsApp doesn't tell other apps about messages you send inside it, so your desk can't tell you've replied. Turn this on and, while you have a switched-on WhatsApp chat open, the app reads only YOUR sent messages. It ignores other apps and chats, and never types or sends anything.")
+        val readerOn = replyReaderEnabled()
+        note(
+            if (readerOn) "Reply reader permission: on ✓"
+            else "Reply reader permission: off. Open Accessibility → Installed apps → Al's Desk Sync — my WhatsApp replies → On. If it's greyed out, use App info → ⋮ → Allow restricted settings first."
+        )
+        button(if (readerOn) "Accessibility settings" else "Open accessibility settings") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        root.addView(Switch(this).apply {
+            text = "Read my WhatsApp replies"
+            isChecked = store.readReplies
+            setOnCheckedChangeListener { _, on -> store.readReplies = on; render() }
+        })
+        if (store.readReplies) note(store.repliesStatus + (if (!readerOn) " · waiting for the permission above" else ""))
+
         // 3. Chats
         heading("3. Chats to include")
         note("New chats appear here when a message arrives (or from your SMS list). Only switched-on chats are sent to the desk.")
@@ -116,7 +134,13 @@ class MainActivity : AppCompatActivity() {
         button("Sync now") { Uploader.kick(this); toast("Syncing shortly") }
         button("Clear waiting messages") { store.wipeQueue(); render() }
 
-        note("What this can't see: muted chats, messages you read on another device before the notification arrived, media, and your own WhatsApp/Messenger replies typed inside those apps. SMS history (if on) includes your sent texts.")
+        note("What this can't see: muted chats, messages you read on another device before the notification arrived, media, and your own Messenger replies typed inside Messenger. Your WhatsApp replies are read only if \"Read my WhatsApp replies\" is on, and only from chats you open on this phone. SMS history (if on) includes your sent texts. From Facebook, only birthday notifications are passed on.")
+    }
+
+    private fun replyReaderEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        return enabled.split(':').any { it.equals("$packageName/${ReplyReader::class.java.name}", true) ||
+            it.equals("$packageName/.ReplyReader", true) }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
