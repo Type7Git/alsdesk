@@ -4,30 +4,77 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Optional: only used when Al turns on SMS history for chosen numbers. -->
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- Donna's short notices (also readable in Android Auto). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
         <package android:name="com.google.android.apps.messaging" />
         <package android:name="com.facebook.orca" />
+        <package android:name="com.facebook.katana" />
+        <!-- Browsers that can host the desk full-screen (Trusted Web Activity). -->
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
     </queries>
 
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.AlsDeskSync">
 
+        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+        <!-- Android Auto reads Donna's MessagingStyle notices aloud and accepts spoken answers. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!-- The app icon opens the desk full-screen. -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="@string/desk_url" />
+            <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/donna_blue" />
+            <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/donna_paper" />
+            <meta-data android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE" android:resource="@drawable/ic_launcher_foreground" />
+            <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR" android:resource="@color/donna_paper" />
+            <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION" android:value="300" />
+            <meta-data android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY" android:value="au.type7.alsdesksync.fileprovider" />
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="life-work-sidekick.lovable.app" />
+            </intent-filter>
         </activity>
+
+        <!-- Needed by the splash screen. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="au.type7.alsdesksync.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/filepaths" />
+        </provider>
+
+        <!-- Phone settings: device link, permissions, chats, reply reader, notices. Reached by the
+             "Phone settings" shortcut (long-press the Donna icon). -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/settings_label" />
 
         <service
             android:name=".CaptureListener"
@@ -52,5 +99,7 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/reply_reader" />
         </service>
+
+        <receiver android:name=".NoticeActionReceiver" android:exported="false" />
     </application>
 </manifest>

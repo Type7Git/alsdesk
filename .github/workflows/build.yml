@@ -53,9 +53,10 @@ jobs:
           path: als-desk-sync.apk
 
       - name: Publish to the "latest" release (private repo)
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest als-desk-sync.apk --title "Al's Desk Sync · build ${{ github.run_number }}" \
+          gh release create latest als-desk-sync.apk --title "Donna · build ${{ github.run_number }}" \
             --notes "Install on your Android phone. Commit ${{ github.sha }}."

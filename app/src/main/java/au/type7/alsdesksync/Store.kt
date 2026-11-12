@@ -128,6 +128,27 @@ class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db",
         get() = prefs.getString("replies_status", "No replies read yet") ?: ""
         set(v) = prefs.edit().putString("replies_status", v).apply()
 
+    /** Donna's short notices as phone/Android Auto notifications. On by default once linked. */
+    var donnaNotices: Boolean
+        get() = prefs.getBoolean("donna_notices", true)
+        set(v) = prefs.edit().putBoolean("donna_notices", v).apply()
+
+    /** Keeps the last few notices (encrypted) so a spoken answer can be shown with its question. */
+    fun rememberNotice(id: String, title: String, text: String) {
+        val arr = runCatching { org.json.JSONArray(prefs.getString("notices", "[]")) }.getOrDefault(org.json.JSONArray())
+        val keep = org.json.JSONArray().put(org.json.JSONObject().put("id", id).put("title", title.take(60)).put("text", text.take(240)))
+        for (i in 0 until minOf(arr.length(), 19)) arr.optJSONObject(i)?.takeIf { it.optString("id") != id }?.let { keep.put(it) }
+        prefs.edit().putString("notices", keep.toString()).apply()
+    }
+
+    fun notice(id: String): Pair<String, String>? {
+        val arr = runCatching { org.json.JSONArray(prefs.getString("notices", "[]")) }.getOrDefault(org.json.JSONArray())
+        for (i in 0 until arr.length()) arr.optJSONObject(i)?.takeIf { it.optString("id") == id }?.let {
+            return it.optString("title") to it.optString("text")
+        }
+        return null
+    }
+
     var lastResult: String
         get() = prefs.getString("last_result", "Not synced yet") ?: ""
         set(v) = prefs.edit().putString("last_result", v).apply()

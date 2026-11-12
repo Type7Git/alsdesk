@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 80) }
         setContentView(ScrollView(this).apply { addView(root) })
         Uploader.schedule(this)
+        DonnaNotices.ensureChannel(this)
+        if (store.donnaNotices) DonnaNotices.schedule(this)
     }
 
     override fun onResume() {
@@ -40,8 +42,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun render() {
         root.removeAllViews()
-        heading("Al's Desk Sync")
-        note("Sends messages from the chats you switch on to your private desk. Nothing is shared from chats you leave off, and nothing is ever sent to anyone from this app.")
+        heading("Donna · phone settings")
+        note("Sends messages from the chats you switch on to your private desk, and lets Donna tap you on the shoulder. Nothing is shared from chats you leave off, and nothing is ever sent to anyone from this app.")
+        button("Open my desk") {
+            startActivity(Intent(this, com.google.androidbrowserhelper.trusted.LauncherActivity::class.java))
+        }
 
         // 1. Device link
         heading("1. Link to your desk")
@@ -70,7 +75,7 @@ class MainActivity : AppCompatActivity() {
         val listening = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
         note(
             if (listening) "Notification access: on ✓"
-            else "Notification access: off. If Android says it's a restricted setting, open App info for Al's Desk Sync → ⋮ → Allow restricted settings, then try again."
+            else "Notification access: off. If Android says it's a restricted setting, open App info for Donna → ⋮ → Allow restricted settings, then try again."
         )
         if (!listening) button("Open notification access") {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
@@ -98,7 +103,7 @@ class MainActivity : AppCompatActivity() {
         val readerOn = replyReaderEnabled()
         note(
             if (readerOn) "Reply reader permission: on ✓"
-            else "Reply reader permission: off. Open Accessibility → Installed apps → Al's Desk Sync — my WhatsApp replies → On. If it's greyed out, use App info → ⋮ → Allow restricted settings first."
+            else "Reply reader permission: off. Open Accessibility → Installed apps → Donna — my WhatsApp replies → On. If it's greyed out, use App info → ⋮ → Allow restricted settings first."
         )
         button(if (readerOn) "Accessibility settings" else "Open accessibility settings") {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -109,6 +114,30 @@ class MainActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, on -> store.readReplies = on; render() }
         })
         if (store.readReplies) note(store.repliesStatus + (if (!readerOn) " · waiting for the permission above" else ""))
+
+        // 2c. Donna's notices (phone + Android Auto)
+        heading("Donna's notices (phone and car)")
+        note("Short heads-ups from Donna, like a pencilled event or someone waiting on you. In the car, Android Auto reads them aloud and you can answer by voice. Your answer goes to Donna only; she never sends anything to anyone without your tap on the desk.")
+        val canNotify = DonnaNotices.canNotify(this)
+        note(if (canNotify) "Notifications: on ✓" else "Notifications: off.")
+        if (!canNotify) button("Allow notifications") {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 8)
+            } else {
+                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+            }
+        }
+        root.addView(Switch(this).apply {
+            text = "Show Donna's notices"
+            isChecked = store.donnaNotices
+            setOnCheckedChangeListener { _, on ->
+                store.donnaNotices = on
+                if (on) DonnaNotices.schedule(this@MainActivity) else DonnaNotices.cancel(this@MainActivity)
+                render()
+            }
+        })
+        note("Android Auto (one-off): open Android Auto settings on this phone, tap Version about ten times until developer settings unlock, then ⋮ → Developer settings → tick Unknown sources. Donna's notices will then show and be read out in the car.")
+        note("Hands-free on the phone: long-press the Donna icon → Talk to Donna (drag it to your home screen), or say \"Hey Google, open Donna\".")
 
         // 3. Chats
         heading("3. Chats to include")
@@ -145,6 +174,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 8) { render(); return }
         if (requestCode == 7) {
             if (SmsReader.hasPermission(this)) SmsReader.discover(this) else store.smsEnabled = false
             render()
