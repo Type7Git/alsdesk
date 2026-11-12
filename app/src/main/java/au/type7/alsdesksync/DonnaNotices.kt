@@ -194,9 +194,10 @@ class NoticeActionReceiver : BroadcastReceiver() {
         Thread {
             try {
                 val r = DonnaNotices.call("$base/reply", "POST", JSONObject().put("id", id).put("text", answer.take(500)).toString())
+                // The desk always answers with a short "spoken" line (including "already sorted"); use it whenever present.
                 val spoken = runCatching { JSONObject(r.body).optString("spoken") }.getOrNull()
-                    ?.takeIf { it.isNotEmpty() && r.code in 200..299 }
-                    ?: if (r.code in 200..299) "Done." else "I couldn't reach your desk. I'll keep that for when you're parked."
+                    ?.takeIf { it.isNotEmpty() && r.code > 0 }
+                    ?: if (r.code in 200..299) "Done." else "I couldn't reach your desk just now. Try again when you're parked."
                 val lines = buildList {
                     if (text.isNotEmpty()) add(DonnaNotices.donna to text)
                     add(DonnaNotices.me to answer.take(240))
