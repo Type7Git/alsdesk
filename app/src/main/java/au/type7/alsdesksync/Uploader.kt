@@ -59,6 +59,7 @@ class Uploader(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, pa
                         return Result.retry()
                     }
                     store.remove(done)
+                    DonnaNotices.kick(applicationContext)
                 }
                 outcome.code == 401 || outcome.code == 403 || outcome.code == 404 -> {
                     store.lastResult = "Device link no longer works. Generate a new one in the desk and paste it here."
@@ -80,7 +81,7 @@ class Uploader(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, pa
     private fun body(batch: List<QueuedMessage>) = JSONObject().apply {
         put("device", JSONObject().apply {
             put("model", "${Build.MANUFACTURER} ${Build.MODEL}".take(80))
-            put("app_version", BuildConfigVersion.name(applicationContext))
+            put("app_version", ("donna-" + BuildConfigVersion.name(applicationContext)).take(40))
         })
         put("messages", JSONArray().apply {
             batch.forEach { m ->

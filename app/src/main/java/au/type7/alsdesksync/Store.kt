@@ -15,6 +15,10 @@ object Sources {
     const val GOOGLE_MESSAGES = "google_messages"
     const val MESSENGER = "messenger"
     const val SMS = "sms"
+    const val FACEBOOK = "facebook" // birthday notifications only
+
+    /** WhatsApp packages whose open chat the optional reply reader may look at. */
+    val whatsappPackages = setOf("com.whatsapp", "com.whatsapp.w4b")
 
     val byPackage = mapOf(
         "com.whatsapp" to WHATSAPP,
@@ -28,6 +32,7 @@ object Sources {
         GOOGLE_MESSAGES -> "Messages"
         MESSENGER -> "Messenger"
         SMS -> "SMS history"
+        FACEBOOK -> "Facebook birthdays"
         else -> source
     }
 }
@@ -42,7 +47,7 @@ data class QueuedMessage(
     val direction: String, // "in" | "out"
     val text: String,
     val sentAtMillis: Long,
-    val capturedVia: String, // "notification" | "sms_provider"
+    val capturedVia: String, // "notification" | "sms_provider" | "screen"
 )
 
 data class Chat(
@@ -60,7 +65,7 @@ fun sha256(s: String): String =
  * Local store. Chats are discovered by title only; message text is queued ONLY for chats Al has allowed.
  * Queued messages are deleted as soon as the desk accepts them.
  */
-class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db", null, 1) {
+class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db", null, 2) {
 
     private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
         ctx,
@@ -79,9 +84,18 @@ class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db",
             """CREATE TABLE queue (key TEXT PRIMARY KEY, source TEXT, chat_id TEXT, chat_title TEXT, is_group INTEGER,
                sender TEXT, direction TEXT, text TEXT, sent_at INTEGER, captured_via TEXT, queued_at INTEGER)"""
         )
+        createRecentOut(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) createRecentOut(db)
+    }
+
+    /** Fingerprints (never text) of Al's recent outgoing messages, so the same reply isn't sent twice. */
+    private fun createRecentOut(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS recent_out (chat_id TEXT NOT NULL, text_hash TEXT NOT NULL, ts INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS recent_out_chat ON recent_out(chat_id, text_hash)")
+    }
 
     // ---------- settings ----------
     var deviceUrl: String?
@@ -105,6 +119,36 @@ class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db",
         get() = prefs.getStringSet("sms_backfilled", emptySet())?.toSet() ?: emptySet()
         set(v) = prefs.edit().putStringSet("sms_backfilled", v).apply()
 
+    /** Optional: read Al's own replies from open WhatsApp chats (accessibility). Off by default. */
+    var readReplies: Boolean
+        get() = prefs.getBoolean("read_replies", false)
+        set(v) = prefs.edit().putBoolean("read_replies", v).apply()
+
+    var repliesStatus: String
+        get() = prefs.getString("replies_status", "No replies read yet") ?: ""
+        set(v) = prefs.edit().putString("replies_status", v).apply()
+
+    /** Donna's short notices as phone/Android Auto notifications. On by default once linked. */
+    var donnaNotices: Boolean
+        get() = prefs.getBoolean("donna_notices", true)
+        set(v) = prefs.edit().putBoolean("donna_notices", v).apply()
+
+    /** Keeps the last few notices (encrypted) so a spoken answer can be shown with its question. */
+    fun rememberNotice(id: String, title: String, text: String) {
+        val arr = runCatching { org.json.JSONArray(prefs.getString("notices", "[]")) }.getOrDefault(org.json.JSONArray())
+        val keep = org.json.JSONArray().put(org.json.JSONObject().put("id", id).put("title", title.take(60)).put("text", text.take(240)))
+        for (i in 0 until minOf(arr.length(), 19)) arr.optJSONObject(i)?.takeIf { it.optString("id") != id }?.let { keep.put(it) }
+        prefs.edit().putString("notices", keep.toString()).apply()
+    }
+
+    fun notice(id: String): Pair<String, String>? {
+        val arr = runCatching { org.json.JSONArray(prefs.getString("notices", "[]")) }.getOrDefault(org.json.JSONArray())
+        for (i in 0 until arr.length()) arr.optJSONObject(i)?.takeIf { it.optString("id") == id }?.let {
+            return it.optString("title") to it.optString("text")
+        }
+        return null
+    }
+
     var lastResult: String
         get() = prefs.getString("last_result", "Not synced yet") ?: ""
         set(v) = prefs.edit().putString("last_result", v).apply()
@@ -124,6 +168,29 @@ class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db",
             put("allowed", 0); put("last_seen", now)
         })
         return false
+    }
+
+    /** The switched-on chat whose notification title matches what's shown at the top of an open chat. */
+    fun allowedChatIdForTitle(source: String, title: String): String? = readableDatabase.rawQuery(
+        "SELECT chat_id FROM chats WHERE source=? AND title=? AND allowed=1 ORDER BY last_seen DESC LIMIT 1",
+        arrayOf(source, title)
+    ).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+
+    /**
+     * Returns true (and remembers it) if this outgoing message hasn't been seen for this chat within ±3 minutes.
+     * Only a hash of the text is kept, for 3 days.
+     */
+    fun firstSightOfOutgoing(chatId: String, text: String, ts: Long): Boolean {
+        val db = writableDatabase
+        val h = sha256(text.trim())
+        val window = 3 * 60_000L
+        db.delete("recent_out", "ts < ?", arrayOf((System.currentTimeMillis() - 3 * 86_400_000L).toString()))
+        db.rawQuery(
+            "SELECT 1 FROM recent_out WHERE chat_id=? AND text_hash=? AND ts BETWEEN ? AND ? LIMIT 1",
+            arrayOf(chatId, h, (ts - window).toString(), (ts + window).toString())
+        ).use { c -> if (c.moveToFirst()) return false }
+        db.insert("recent_out", null, ContentValues().apply { put("chat_id", chatId); put("text_hash", h); put("ts", ts) })
+        return true
     }
 
     fun setAllowed(chatId: String, allowed: Boolean) {
@@ -184,7 +251,10 @@ class Store private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "sync.db",
         }
     }
 
-    fun wipeQueue() { writableDatabase.delete("queue", null, null) }
+    fun wipeQueue() {
+        writableDatabase.delete("queue", null, null)
+        writableDatabase.delete("recent_out", null, null)
+    }
 
     companion object {
         @Volatile private var instance: Store? = null

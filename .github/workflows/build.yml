@@ -47,15 +47,21 @@ jobs:
           else gradle --no-daemon :app:assembleRelease; cp app/build/outputs/apk/release/app-release.apk als-desk-sync.apk; fi
           rm -f "$RUNNER_TEMP/sync.jks"
 
+      - name: Show signing certificate (public fingerprint only)
+        run: |
+          AS=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$AS" verify --print-certs als-desk-sync.apk | grep -E "SHA-256|DN"
+
       - uses: actions/upload-artifact@v4
         with:
           name: als-desk-sync-apk
           path: als-desk-sync.apk
 
       - name: Publish to the "latest" release (private repo)
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest als-desk-sync.apk --title "Al's Desk Sync · build ${{ github.run_number }}" \
+          gh release create latest als-desk-sync.apk --title "Donna · build ${{ github.run_number }}" \
             --notes "Install on your Android phone. Commit ${{ github.sha }}."

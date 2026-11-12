@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Al\'s Desk Sync</string>
-    <string name="listener_label">Al\'s Desk Sync — chats you choose</string>
+    <string name="app_name">Donna</string>
+    <string name="settings_label">Donna phone settings</string>
+    <string name="desk_url">https://life-work-sidekick.lovable.app/desk</string>
+    <string name="asset_statements" translatable="false">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://life-work-sidekick.lovable.app\" } }]</string>
+    <string name="shortcut_talk_short">Talk to Donna</string>
+    <string name="shortcut_talk_long">Talk to Donna (voice)</string>
+    <string name="shortcut_settings_short">Phone settings</string>
+    <string name="shortcut_settings_long">Donna phone settings</string>
+    <string name="listener_label">Donna — chats you choose</string>
+    <string name="reply_reader_label">Donna — my WhatsApp replies</string>
+    <string name="reply_reader_summary">Reads only your own sent messages in WhatsApp chats you\'ve switched on.</string>
+    <string name="reply_reader_description">When you have a WhatsApp chat open that you\'ve switched on in Donna, this reads only YOUR outgoing messages so your desk knows you\'ve replied. It ignores every other app and every other chat, never reads incoming messages this way, and never types, taps or sends anything. Turn it off any time here or in the app.</string>
 </resources>
